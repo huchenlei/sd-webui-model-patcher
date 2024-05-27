@@ -116,7 +116,7 @@ class WeightPatch(BaseModel):
         try:
             if self.patch_type == PatchType.DIFF:
                 assert isinstance(self.weight, torch.Tensor)
-                return self._patch_diff(model_weight)
+                return self._patch_diff(model_weight, key)
             elif self.patch_type == PatchType.LORA:
                 assert isinstance(self.weight, LoRAWeight)
                 return self._patch_lora(model_weight)
@@ -128,10 +128,37 @@ class WeightPatch(BaseModel):
             logging.error("ERROR {} {} {}".format(self.patch_type, key, e))
             return model_weight
 
-    def _patch_diff(self, model_weight: torch.Tensor) -> torch.Tensor:
+    def _patch_diff_expand(self, model_weight: torch.Tensor, key: str) -> torch.Tensor:
+        """Unet input only. Used for the model to accept more input concats."""
+        new_shape = [max(n, m) for n, m in zip(self.weight.shape, model_weight.shape)]
+        WeightPatch.cls_logger.info(
+            f"Merged with {key} channel changed from {model_weight.shape} to {new_shape}"
+        )
+        new_diff = self.alpha * WeightPatch.cast_to_device(
+            self.weight, model_weight.device, model_weight.dtype
+        )
+        new_weight = torch.zeros(size=new_shape).to(model_weight)
+        new_weight[
+            : model_weight.shape[0],
+            : model_weight.shape[1],
+            : model_weight.shape[2],
+            : model_weight.shape[3],
+        ] = model_weight
+        new_weight[
+            : new_diff.shape[0],
+            : new_diff.shape[1],
+            : new_diff.shape[2],
+            : new_diff.shape[3],
+        ] += new_diff
+        return new_weight.contiguous().clone()
+
+    def _patch_diff(self, model_weight: torch.Tensor, key: str) -> torch.Tensor:
         """Apply the diff patch to model weight."""
         if self.alpha != 0.0:
             if self.weight.shape != model_weight.shape:
+                if model_weight.ndim == self.weight.ndim == 4:
+                    return self._patch_diff_expand(model_weight, key)
+
                 raise ValueError(
                     "WARNING SHAPE MISMATCH WEIGHT NOT MERGED {} != {}".format(
                         self.weight.shape, model_weight.shape
@@ -326,7 +353,9 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
             old_forward = module.forward
             self._module_backup[key] = old_forward
             for module_patch in module_patches:
-                module.forward = module_patch.create_new_forward_func(module, module.forward)
+                module.forward = module_patch.create_new_forward_func(
+                    module, module.forward
+                )
 
     def _patch_weights(self):
         for key, weight_patches in self.weight_patches.items():
