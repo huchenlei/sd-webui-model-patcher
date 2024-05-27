@@ -3,7 +3,6 @@ import functools
 from typing import Callable
 
 from modules.processing import (
-    StableDiffusionProcessing,
     StableDiffusionProcessingTxt2Img,
     StableDiffusionProcessingImg2Img,
 )
@@ -13,15 +12,13 @@ from lib_modelpatcher.model_patcher import ModelPatcher
 from lib_modelpatcher.sd_model_patcher import StableDiffusionModelPatchers
 
 
-def model_patcher_hook():
+def model_patcher_hook(logger: logging.Logger):
     """Patches StableDiffusionProcessing to add
     - model_patchers
     - hr_model_patchers
     fields to StableDiffusionProcessing classes, and apply patches before
     calling sample methods
     """
-    logger = logging.getLogger(__name__)
-
     def hook_init(patcher_field_name: str):
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
@@ -56,11 +53,14 @@ def model_patcher_hook():
 
         return decorator
 
-    StableDiffusionProcessing.__init__ = hook_init("model_patchers")(
-        StableDiffusionProcessing.__init__
+    StableDiffusionProcessingTxt2Img.__init__ = hook_init("model_patchers")(
+        StableDiffusionProcessingTxt2Img.__init__
     )
     StableDiffusionProcessingTxt2Img.__init__ = hook_init("hr_model_patchers")(
         StableDiffusionProcessingTxt2Img.__init__
+    )
+    StableDiffusionProcessingImg2Img.__init__ = hook_init("model_patchers")(
+        StableDiffusionProcessingImg2Img.__init__
     )
     logger.info("__init__ hooks applied")
 
@@ -99,4 +99,6 @@ def model_patcher_hook():
     logger.info("sample hooks applied")
 
 
-model_patcher_hook()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+model_patcher_hook(logger)
