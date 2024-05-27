@@ -234,6 +234,8 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
     module_patches: Dict[str, List[ModulePatch]] = defaultdict(list)
     # Store modules before patching.
     _module_backup: Dict[str, torch.nn.Module] = {}
+    # Whether the model is patched.
+    is_patched: bool = False
 
     def add_weight_patch(self, key: str, weight_patch: WeightPatch) -> bool:
         if key not in self.model_keys:
@@ -343,6 +345,7 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         self._patch_modules()
         if patch_weights:
             self._patch_weights()
+        self.is_patched = True
         return self.model
 
     def _unpatch_weights(self):
@@ -361,4 +364,5 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
     def unpatch_model(self, unpatch_weights=True):
         if unpatch_weights:
             self._unpatch_weights()
+        self.is_patched = False
         self._unpatch_modules()
