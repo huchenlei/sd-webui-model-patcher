@@ -181,9 +181,7 @@ class WeightPatch(BaseModel):
 
 
 class ModulePatch(BaseModel, Generic[ModuleType]):
-    """Patch to replace a module in the model.
-    Note: not using torch.hooks because we want the patch to be able to access
-    torch.nn.Module internal states."""
+    """Patch to replace a module in the model."""
 
     create_new_forward_func: Callable[[ModuleType, Callable], Callable]
 
