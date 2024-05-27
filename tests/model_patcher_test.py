@@ -1,6 +1,6 @@
 import torch
 
-from lib_modelpatcher.model_patcher import ModelPatcher, ModulePatch
+from lib_modelpatcher.model_patcher import ModelPatcher, ModulePatch, WeightPatch
 
 
 def test_model_patcher_creation():
@@ -74,6 +74,42 @@ def test_model_patcher_module_patch():
     assert model_patcher.is_patched is True
     assert torch.allclose(
         model(input_tensor), input_tensor + 1.0
+    ), "Model is not identity transformation after patching"
+
+    model_patcher.unpatch_model()
+    assert model_patcher.is_patched is False
+    assert torch.allclose(
+        model(input_tensor), input_tensor
+    ), "Model is identity transformation after unpatching"
+
+
+def test_model_patcher_weight_patch():
+    load_device = torch.device("cpu")  # TODO: Change to cuda:0 when running locally
+    offload_device = torch.device("cpu")
+
+    model = SampleModel()
+    model.init_identity_linear()
+
+    model = model.to(load_device)
+    input_tensor = torch.randn(10, 10).to(load_device)
+    assert torch.allclose(
+        model(input_tensor), input_tensor
+    ), "Model is identity transformation before patching"
+
+    model_patcher = ModelPatcher(
+        model=model,
+        load_device=load_device,
+        offload_device=offload_device,
+    ).to(load_device)
+
+    model_patcher.add_weight_patch(
+        key="fc1.bias", weight_patch=WeightPatch(weight=2.0 * torch.ones_like(model.fc1.bias))
+    )
+    assert model_patcher.is_patched is False
+    model_patcher.patch_model()
+    assert model_patcher.is_patched is True
+    assert torch.allclose(
+        model(input_tensor), input_tensor + 2.0
     ), "Model is not identity transformation after patching"
 
     model_patcher.unpatch_model()
