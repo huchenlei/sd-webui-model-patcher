@@ -181,9 +181,11 @@ class WeightPatch(BaseModel):
 
 
 class ModulePatch(BaseModel, Generic[ModuleType]):
-    """Patch to replace a module in the model."""
+    """Patch to replace a module in the model.
+    Note: not using torch.hooks because we want the patch to be able to access
+    torch.nn.Module internal states."""
 
-    apply_func: Callable[[ModuleType], ModuleType]
+    create_new_forward_func: Callable[[ModuleType, Callable], Callable]
 
 
 class ModelPatcher(BaseModel, Generic[ModelType]):
@@ -290,6 +292,7 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         self.model.to(device=device, dtype=dtype)
         if device is not None:
             self.current_device = device
+        return self
 
     def get_attr(self, key: str) -> Optional[Any]:
         return get_attr(self.model, key)
@@ -321,10 +324,11 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
 
     def _patch_modules(self):
         for key, module_patches in self.module_patches.items():
-            old_module = self.get_attr(key)
-            self._module_backup[key] = old_module
+            module = self.get_attr(key)
+            old_forward = module.forward
+            self._module_backup[key] = old_forward
             for module_patch in module_patches:
-                self.set_attr(key, module_patch.apply_func(old_module))
+                module.forward = module_patch.create_new_forward_func(module, module.forward)
 
     def _patch_weights(self):
         for key, weight_patches in self.weight_patches.items():
@@ -358,7 +362,8 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
 
     def _unpatch_modules(self):
         for k, v in self._module_backup.items():
-            self.set_attr(k, v)
+            module = self.get_attr(k)
+            module.forward = v
         self._module_backup.clear()
 
     def unpatch_model(self, unpatch_weights=True):
