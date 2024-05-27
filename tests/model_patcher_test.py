@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from lib_modelpatcher.model_patcher import ModelPatcher, ModulePatch, WeightPatch
@@ -39,7 +40,8 @@ class SampleModel(torch.nn.Module):
         return x
 
 
-def test_model_patcher_module_patch():
+@pytest.mark.parametrize("module_key", ["fc1", "fc2", "."])
+def test_model_patcher_module_patch(module_key: str):
     load_device = torch.device("cpu")  # TODO: Change to cuda:0 when running locally
     offload_device = torch.device("cpu")
 
@@ -59,15 +61,13 @@ def test_model_patcher_module_patch():
     ).to(load_device)
 
     def create_new_forward(module, old_forward):
-        assert isinstance(module, torch.nn.Linear)
-
         def new_forward(x):
             return old_forward(x) + 1.0
 
         return new_forward
 
     model_patcher.add_module_patch(
-        key="fc1", module_patch=ModulePatch(create_new_forward_func=create_new_forward)
+        key=module_key, module_patch=ModulePatch(create_new_forward_func=create_new_forward)
     )
     assert model_patcher.is_patched is False
     model_patcher.patch_model()

@@ -320,9 +320,16 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         return self
 
     def get_attr(self, key: str) -> Optional[Any]:
+        if key == ".":
+            return self.model
         return get_attr(self.model, key)
 
     def set_attr(self, key: str, value: Any) -> Any:
+        if key == ".":
+            value = getattr(self.model, key)
+            setattr(self.model, key, value)
+            return value
+
         return set_attr(self.model, key, value)
 
     def set_attr_param(self, attr, value):
