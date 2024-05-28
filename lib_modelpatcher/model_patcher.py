@@ -319,6 +319,9 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         # Some fields might needs explicit copy.
         return self.copy()
 
+    def __repr__(self):
+        return f"ModelPatcher(model={self.model.__class__}, model_size={self.model_size}, is_patched={self.is_patched})"
+
     def to(
         self,
         device: Optional[torch.device] = None,
@@ -390,6 +393,7 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
                 self.copy_to_param(key, new_weight)
 
     def patch_model(self, patch_weights: bool = True):
+        assert not self.is_patched, "Model is already patched."
         self._patch_modules()
         if patch_weights:
             self._patch_weights()
@@ -411,6 +415,7 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         self.module_backup.clear()
 
     def unpatch_model(self, unpatch_weights=True):
+        assert self.is_patched, "Model is not patched."
         if unpatch_weights:
             self._unpatch_weights()
         self.is_patched = False
