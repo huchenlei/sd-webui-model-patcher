@@ -1,5 +1,5 @@
 # sd-webui-model-patcher
-Patch LDM in ComfyUI style in A1111
+ComfyUI style LDM patching in A1111.
 
 ## Road Map
 
