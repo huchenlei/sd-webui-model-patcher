@@ -1,3 +1,4 @@
+import sys
 import logging
 import functools
 from typing import Callable
@@ -88,6 +89,14 @@ def model_patcher_hook(logger: logging.Logger):
     logger.info("sample hooks applied")
 
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-model_patcher_hook(logger)
+def create_logger():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        logger.addHandler(handler)
+    return logger
+
+
+model_patcher_hook(create_logger())
