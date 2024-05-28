@@ -403,9 +403,9 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
     def _unpatch_weights(self):
         for k, v in self.weight_backup.items():
             if self.weight_inplace_update:
-                self.copy_to_param(k, v)
-            else:
                 self.set_attr_param(k, v)
+            else:
+                self.copy_to_param(k, v)
         self.weight_backup.clear()
 
     def _unpatch_modules(self):
