@@ -218,7 +218,9 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         arbitrary_types_allowed = True
         extra = "ignore"
 
-    cls_logger: ClassVar[logging.Logger] = logging.Logger("ModelPatcher")
+    cls_logger: ClassVar[logging.Logger] = logging.Logger(
+        "ModelPatcher", level=logging.INFO
+    )
     cls_strict: ClassVar[bool] = False
 
     # The managed model of the model patcher.
@@ -257,14 +259,14 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         default_factory=lambda: defaultdict(list)
     )
     # Store weights before patching.
-    _weight_backup: Dict[str, torch.Tensor] = Field(default_factory=dict)
+    weight_backup: Dict[str, torch.Tensor] = Field(default_factory=dict)
 
     # Patches applied to model's torch modules.
     module_patches: Dict[str, List[ModulePatch]] = Field(
         default_factory=lambda: defaultdict(list)
     )
     # Store modules before patching.
-    _module_backup: Dict[str, torch.nn.Module] = Field(default_factory=dict)
+    module_backup: Dict[str, Callable] = Field(default_factory=dict)
     # Whether the model is patched.
     is_patched: bool = False
 
@@ -366,7 +368,7 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         for key, module_patches in self.module_patches.items():
             module = self.get_attr(key)
             old_forward = module.forward
-            self._module_backup[key] = old_forward
+            self.module_backup[key] = old_forward
             for module_patch in module_patches:
                 module.forward = module_patch.create_new_forward_func(
                     module, module.forward
@@ -376,7 +378,7 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         for key, weight_patches in self.weight_patches.items():
             assert key in self.model_keys, f"Key {key} not found in model."
             old_weight = self.get_attr(key)
-            self._weight_backup[key] = old_weight
+            self.weight_backup[key] = old_weight
 
             new_weight = old_weight
             for weight_patch in weight_patches:
@@ -395,18 +397,18 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         return self.model
 
     def _unpatch_weights(self):
-        for k, v in self._weight_backup.items():
+        for k, v in self.weight_backup.items():
             if self.weight_inplace_update:
                 self.copy_to_param(k, v)
             else:
                 self.set_attr_param(k, v)
-        self._weight_backup.clear()
+        self.weight_backup.clear()
 
     def _unpatch_modules(self):
-        for k, v in self._module_backup.items():
+        for k, v in self.module_backup.items():
             module = self.get_attr(k)
             module.forward = v
-        self._module_backup.clear()
+        self.module_backup.clear()
 
     def unpatch_model(self, unpatch_weights=True):
         if unpatch_weights:
