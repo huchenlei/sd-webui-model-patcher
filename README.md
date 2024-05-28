@@ -5,6 +5,7 @@ ComfyUI style LDM patching in A1111.
 
 - Support all exposed APIs in ComfyUI's `ModelPatcher`.
 - Support patching of diffusers pipeline.
+- Eventually make ModelPatcher a python package that can be imported to patch any backend.
 
 ## Example
 
