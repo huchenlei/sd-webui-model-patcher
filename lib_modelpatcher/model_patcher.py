@@ -134,7 +134,7 @@ class WeightPatch(BaseModel):
         WeightPatch.cls_logger.info(
             f"Merged with {key} channel changed from {model_weight.shape} to {new_shape}"
         )
-        new_diff = self.alpha * WeightPatch.cast_to_device(
+        new_diff = self.alpha * WeightPatch.cls_cast_to_device(
             self.weight, model_weight.device, model_weight.dtype
         )
         new_weight = torch.zeros(size=new_shape).to(model_weight)
@@ -253,14 +253,18 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         return set(model.state_dict().keys()) if v is None else v
 
     # Patches applied to module weights.
-    weight_patches: Dict[str, List[WeightPatch]] = defaultdict(list)
+    weight_patches: Dict[str, List[WeightPatch]] = Field(
+        default_factory=lambda: defaultdict(list)
+    )
     # Store weights before patching.
-    _weight_backup: Dict[str, torch.Tensor] = {}
+    _weight_backup: Dict[str, torch.Tensor] = Field(default_factory=dict)
 
     # Patches applied to model's torch modules.
-    module_patches: Dict[str, List[ModulePatch]] = defaultdict(list)
+    module_patches: Dict[str, List[ModulePatch]] = Field(
+        default_factory=lambda: defaultdict(list)
+    )
     # Store modules before patching.
-    _module_backup: Dict[str, torch.nn.Module] = {}
+    _module_backup: Dict[str, torch.nn.Module] = Field(default_factory=dict)
     # Whether the model is patched.
     is_patched: bool = False
 
@@ -285,29 +289,33 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         strength_patch: float = 1.0,
         strength_model: float = 1.0,
     ):
-        """@Deprecated
-        Legacy function interface from ComfyUI ModelPatcher.
-        """
+        """ComfyUI-compatible interface to add weight patches."""
 
         def parse_value(
             v: Union[Tuple[torch.Tensor], Tuple[str, torch.Tensor]]
         ) -> Tuple[torch.Tensor, PatchType]:
             if len(v) == 1:
-                return v, PatchType.DIFF
+                return dict(weight=v[0], patch_type=PatchType.DIFF)
             else:
                 assert len(v) == 2, f"Invalid patch value {v}."
-                return v[1], PatchType(v[0])
+                return dict(weight=v[1], patch_type=PatchType(v[0]))
 
         return self.add_weight_patches(
             {
                 key: WeightPatch(
-                    *parse_value(value),
+                    **parse_value(value),
                     alpha=strength_patch,
                     strength_model=strength_model,
                 )
                 for key, value in patches.items()
             }
         )
+
+    def clone(self):
+        """ComfyUI-compatible interface to clone the model patcher."""
+        # TODO: Check everything works as expected.
+        # Some fields might needs explicit copy.
+        return self.copy()
 
     def to(
         self,
