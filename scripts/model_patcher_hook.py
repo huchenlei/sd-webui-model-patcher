@@ -58,6 +58,31 @@ def model_patcher_hook(logger: logging.Logger):
     )
     logger.info("__init__ hooks applied")
 
+    def hook_close(patcher_field_name: str):
+        def decorator(func: Callable) -> Callable:
+            @functools.wraps(func)
+            def wrapped_close_func(self, *args, **kwargs):
+                patcher: ModelPatcher = getattr(self, patcher_field_name)
+                assert isinstance(patcher, ModelPatcher)
+                patcher.close()
+                logger.info(f"Close p.{patcher_field_name}.")
+                return func(self, *args, **kwargs)
+
+            return wrapped_close_func
+
+        return decorator
+
+    StableDiffusionProcessingTxt2Img.close = hook_close("model_patcher")(
+        StableDiffusionProcessingTxt2Img.close
+    )
+    StableDiffusionProcessingTxt2Img.close = hook_close("hr_model_patcher")(
+        StableDiffusionProcessingTxt2Img.close
+    )
+    StableDiffusionProcessingImg2Img.close = hook_close("model_patcher")(
+        StableDiffusionProcessingImg2Img.close
+    )
+    logger.info("close hooks applied")
+
     def hook_sample(patcher_field_name: str):
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
@@ -94,7 +119,9 @@ def create_logger():
     logger.setLevel(logging.INFO)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
         logger.addHandler(handler)
     return logger
 

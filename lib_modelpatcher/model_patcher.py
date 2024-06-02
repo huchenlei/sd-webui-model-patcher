@@ -230,7 +230,7 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
     # The device to offload the model to.
     offload_device: torch.device = Field(immutable=True)
     # Whether to update weight in place.
-    weight_inplace_update: bool = Field(immutable=True, default=True)
+    weight_inplace_update: bool = Field(immutable=True, default=False)
 
     # The current device the model is stored on.
     current_device: torch.device = None
@@ -388,9 +388,9 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
                 new_weight = weight_patch.apply(new_weight, key)
 
             if self.weight_inplace_update:
-                self.set_attr_param(key, new_weight)
-            else:
                 self.copy_to_param(key, new_weight)
+            else:
+                self.set_attr_param(key, new_weight)
 
     def patch_model(self, patch_weights: bool = True):
         assert not self.is_patched, "Model is already patched."
@@ -403,9 +403,9 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
     def _unpatch_weights(self):
         for k, v in self.weight_backup.items():
             if self.weight_inplace_update:
-                self.set_attr_param(k, v)
-            else:
                 self.copy_to_param(k, v)
+            else:
+                self.set_attr_param(k, v)
         self.weight_backup.clear()
 
     def _unpatch_modules(self):
@@ -420,3 +420,11 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
             self._unpatch_weights()
         self.is_patched = False
         self._unpatch_modules()
+
+    def close(self):
+        """Properly free VRAM by clearing reference to tensors and modules."""
+        assert not self.is_patched
+        assert len(self.weight_backup) == 0
+        assert len(self.module_backup) == 0
+        self.module_patches.clear()
+        self.weight_patches.clear()
