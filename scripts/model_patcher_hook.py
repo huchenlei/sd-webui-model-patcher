@@ -4,9 +4,11 @@ import functools
 from typing import Callable
 
 from modules.processing import (
+    StableDiffusionProcessing,
     StableDiffusionProcessingTxt2Img,
     StableDiffusionProcessingImg2Img,
 )
+from modules.sd_samplers_common import Sampler
 from modules import devices
 
 from lib_modelpatcher.model_patcher import ModelPatcher
@@ -16,6 +18,7 @@ def model_patcher_hook(logger: logging.Logger):
     """Patches StableDiffusionProcessing to add
     - model_patcher
     - hr_model_patcher
+    - get_model_patcher
     fields to StableDiffusionProcessing classes, and apply patches before
     calling sample methods
     """
@@ -23,7 +26,7 @@ def model_patcher_hook(logger: logging.Logger):
     def hook_init(patcher_field_name: str):
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
-            def wrapped_init_func(self, *args, **kwargs):
+            def wrapped_init_func(self: StableDiffusionProcessing, *args, **kwargs):
                 result = func(self, *args, **kwargs)
 
                 sd_ldm = self.sd_model
@@ -38,6 +41,7 @@ def model_patcher_hook(logger: logging.Logger):
                         model=sd_ldm.model,
                         load_device=load_device,
                         offload_device=offload_device,
+                        name=f"{patcher_field_name} of {self.__class__.__name__}",
                     ),
                 )
                 logger.info(f"Init p.{patcher_field_name}.")
@@ -61,7 +65,7 @@ def model_patcher_hook(logger: logging.Logger):
     def hook_close(patcher_field_name: str):
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
-            def wrapped_close_func(self, *args, **kwargs):
+            def wrapped_close_func(self: StableDiffusionProcessing, *args, **kwargs):
                 patcher: ModelPatcher = getattr(self, patcher_field_name)
                 assert isinstance(patcher, ModelPatcher)
                 patcher.close()
@@ -83,35 +87,34 @@ def model_patcher_hook(logger: logging.Logger):
     )
     logger.info("close hooks applied")
 
-    def hook_sample(patcher_field_name: str):
+    def hook_sample():
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
-            def wrapped_sample_func(self, *args, **kwargs):
-                patcher: ModelPatcher = getattr(self, patcher_field_name)
+            def wrapped_sample_func(self: Sampler, *args, **kwargs):
+                patcher: ModelPatcher = self.p.get_model_patcher()
                 assert isinstance(patcher, ModelPatcher)
                 patcher.patch_model()
-                logger.info(f"Patch p.{patcher_field_name}.")
+                logger.info(f"Patch {patcher.name}.")
 
                 try:
                     return func(self, *args, **kwargs)
                 finally:
                     patcher.unpatch_model()
-                    logger.info(f"Unpatch p.{patcher_field_name}.")
+                    logger.info(f"Unpatch {patcher.name}.")
 
             return wrapped_sample_func
 
         return decorator
 
-    StableDiffusionProcessingTxt2Img.sample = hook_sample("model_patcher")(
-        StableDiffusionProcessingTxt2Img.sample
-    )
-    StableDiffusionProcessingImg2Img.sample = hook_sample("model_patcher")(
-        StableDiffusionProcessingImg2Img.sample
-    )
-    StableDiffusionProcessingTxt2Img.sample_hr_pass = hook_sample("hr_model_patcher")(
-        StableDiffusionProcessingTxt2Img.sample_hr_pass
-    )
+    Sampler.launch_sampling = hook_sample()(Sampler.launch_sampling)
     logger.info("sample hooks applied")
+
+    def get_model_patcher(self: StableDiffusionProcessing) -> ModelPatcher:
+        if isinstance(self, StableDiffusionProcessingTxt2Img) and self.is_hr_pass:
+            return self.hr_model_patcher
+        return self.model_patcher
+
+    StableDiffusionProcessing.get_model_patcher = get_model_patcher
 
 
 def create_logger():

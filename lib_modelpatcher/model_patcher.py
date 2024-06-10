@@ -254,6 +254,9 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         model: ModelType = values.get("model")
         return set(model.state_dict().keys()) if v is None else v
 
+    # The optional name of the ModelPatcher for debug purpose.
+    name: str = Field(immutable=True, default="ModelPatcher")
+
     # Patches applied to module weights.
     weight_patches: Dict[str, List[WeightPatch]] = Field(
         default_factory=lambda: defaultdict(list)
