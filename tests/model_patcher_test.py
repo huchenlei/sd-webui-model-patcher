@@ -67,7 +67,8 @@ def test_model_patcher_module_patch(module_key: str):
         return new_forward
 
     model_patcher.add_module_patch(
-        key=module_key, module_patch=ModulePatch(create_new_forward_func=create_new_forward)
+        key=module_key,
+        module_patch=ModulePatch(create_new_forward_func=create_new_forward),
     )
     assert model_patcher.is_patched is False
     model_patcher.patch_model()
@@ -103,7 +104,8 @@ def test_model_patcher_weight_patch():
     ).to(load_device)
 
     model_patcher.add_weight_patch(
-        key="fc1.bias", weight_patch=WeightPatch(weight=2.0 * torch.ones_like(model.fc1.bias))
+        key="fc1.bias",
+        weight_patch=WeightPatch(weight=2.0 * torch.ones_like(model.fc1.bias)),
     )
     assert model_patcher.is_patched is False
     model_patcher.patch_model()

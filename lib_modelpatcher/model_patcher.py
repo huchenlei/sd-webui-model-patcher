@@ -21,7 +21,7 @@ from typing import (
 
 import torch
 import logging
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def set_attr(obj, attr, value):
@@ -90,9 +90,10 @@ CastToDeviceFunc = Callable[[torch.Tensor, torch.device, torch.dtype], torch.Ten
 class WeightPatch(BaseModel):
     """Patch to apply on model weight."""
 
-    class Config:
-        arbitrary_types_allowed = True
-        extra = "ignore"
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_schema_extra="ignore",
+    )
 
     cls_logger: ClassVar[logging.Logger] = logging.Logger("WeightPatch")
     cls_cast_to_device: ClassVar[CastToDeviceFunc] = lambda t, device, dtype: t.to(
@@ -214,9 +215,11 @@ class ModulePatch(BaseModel, Generic[ModuleType]):
 
 
 class ModelPatcher(BaseModel, Generic[ModelType]):
-    class Config:
-        arbitrary_types_allowed = True
-        extra = "ignore"
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_schema_extra="ignore",
+        protected_namespaces=(),
+    )
 
     cls_logger: ClassVar[logging.Logger] = logging.Logger(
         "ModelPatcher", level=logging.INFO
@@ -224,38 +227,24 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
     cls_strict: ClassVar[bool] = False
 
     # The managed model of the model patcher.
-    model: ModelType = Field(immutable=True)
+    model: ModelType = Field(frozen=True)
     # The device to run inference on.
-    load_device: torch.device = Field(immutable=True)
+    load_device: torch.device = Field(frozen=True)
     # The device to offload the model to.
-    offload_device: torch.device = Field(immutable=True)
+    offload_device: torch.device = Field(frozen=True)
     # Whether to update weight in place.
-    weight_inplace_update: bool = Field(immutable=True, default=False)
+    weight_inplace_update: bool = Field(frozen=True, default=False)
 
     # The current device the model is stored on.
     current_device: torch.device = None
 
-    @validator("current_device", pre=True, always=True)
-    def set_current_device(cls, v, values):
-        return values.get("offload_device") if v is None else v
-
     # The size of the model in number of bytes.
     model_size: int = None
 
-    @validator("model_size", pre=True, always=True)
-    def set_model_size(cls, v, values):
-        model: ModelType = values.get("model")
-        return module_size(model) if v is None else v
-
     model_keys: Set[str] = None
 
-    @validator("model_keys", pre=True, always=True)
-    def set_model_keys(cls, v, values):
-        model: ModelType = values.get("model")
-        return set(model.state_dict().keys()) if v is None else v
-
     # The optional name of the ModelPatcher for debug purpose.
-    name: str = Field(immutable=True, default="ModelPatcher")
+    name: str = Field(frozen=True, default="ModelPatcher")
 
     # Patches applied to module weights.
     weight_patches: Dict[str, List[WeightPatch]] = Field(
@@ -272,6 +261,20 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
     module_backup: Dict[str, Callable] = Field(default_factory=dict)
     # Whether the model is patched.
     is_patched: bool = False
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.current_device = (
+            self.offload_device if self.current_device is None else self.current_device
+        )
+        self.model_size = (
+            module_size(self.model) if self.model_size is None else self.model_size
+        )
+        self.model_keys = (
+            set(self.model.state_dict().keys())
+            if self.model_keys is None
+            else self.model_keys
+        )
 
     def add_weight_patch(self, key: str, weight_patch: WeightPatch) -> bool:
         if key not in self.model_keys:
@@ -320,7 +323,7 @@ class ModelPatcher(BaseModel, Generic[ModelType]):
         """ComfyUI-compatible interface to clone the model patcher."""
         # TODO: Check everything works as expected.
         # Some fields might needs explicit copy.
-        return self.copy()
+        return self.model_copy()
 
     def __repr__(self):
         return f"ModelPatcher(model={self.model.__class__}, model_size={self.model_size}, is_patched={self.is_patched})"
